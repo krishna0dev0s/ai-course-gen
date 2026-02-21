@@ -1,0 +1,15 @@
+{
+  "React Functional Component Export": {
+    "prefix": "rfce",
+    "body": [
+      "const ${1:ComponentName} = () => {",
+      "  return (",
+      "    <div>${1:ComponentName}</div>",
+      "  );",
+      "};",
+      "",
+      "export default ${1:ComponentName};"
+    ],
+    "description": "Create a React functional component with default export"
+  }
+}
