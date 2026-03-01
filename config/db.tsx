@@ -1,3 +1,14 @@
 import { drizzle } from 'drizzle-orm/neon-http';
 
-export const db = drizzle(process.env.DATABASE_URL!);
+const databaseUrl = process.env.DATABASE_URL;
+
+export const db = databaseUrl
+	? drizzle(databaseUrl)
+	: (new Proxy(
+			{},
+			{
+				get() {
+					throw new Error('Missing DATABASE_URL environment variable');
+				},
+			}
+		) as ReturnType<typeof drizzle>);
