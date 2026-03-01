@@ -210,6 +210,8 @@ async function fetchEmbeddableVideoIds(videoIds: string[], youtubeApiKey: string
 }
 
 export async function POST(req: NextRequest) {
+  let requestedChapters: ChapterInput[] = [];
+
   try {
     const { courseName, chapters, forceRefresh } = (await req.json()) as {
       courseName?: string;
@@ -217,13 +219,27 @@ export async function POST(req: NextRequest) {
       forceRefresh?: boolean;
     };
 
+    requestedChapters = Array.isArray(chapters) ? chapters : [];
+
     if (!Array.isArray(chapters) || chapters.length === 0) {
       return NextResponse.json({ error: "chapters are required" }, { status: 400 });
     }
 
     const youtubeApiKey = process.env.YOUTUBE_API_KEY;
     if (!youtubeApiKey) {
-      return NextResponse.json({ error: "YOUTUBE_API_KEY is not configured" }, { status: 500 });
+      const emptyVideos: YoutubeVideoResult[] = chapters.map((chapter, index) => ({
+        chapterId: chapterIdentity(index, chapter),
+        chapterTitle: chapter.chapterTitle ?? `Chapter ${index + 1}`,
+        videoId: null,
+        title: null,
+        description: null,
+        thumbnailUrl: null,
+        channelTitle: null,
+        publishedAt: null,
+        watchUrl: null,
+        embedUrl: null,
+      }));
+      return NextResponse.json({ videos: emptyVideos, warning: "MISSING_KEY" });
     }
 
     const fallbackCourseName = courseName?.trim() || "course";
@@ -261,6 +277,7 @@ export async function POST(req: NextRequest) {
             channelTitle: null, publishedAt: null, watchUrl: null, embedUrl: null,
           };
           videos.push(emptyResult);
+          setCachedVideo(cacheKey, emptyResult);
           continue;
         }
       }
@@ -339,6 +356,24 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({ videos, ...(apiWarning ? { warning: apiWarning } : {}) });
   } catch (error) {
     console.error("Error fetching YouTube videos:", error);
-    return NextResponse.json({ error: "Failed to fetch YouTube videos" }, { status: 500 });
+
+    try {
+      const emptyVideos: YoutubeVideoResult[] = requestedChapters.map((chapter, index) => ({
+        chapterId: chapterIdentity(index, chapter),
+        chapterTitle: chapter.chapterTitle ?? `Chapter ${index + 1}`,
+        videoId: null,
+        title: null,
+        description: null,
+        thumbnailUrl: null,
+        channelTitle: null,
+        publishedAt: null,
+        watchUrl: null,
+        embedUrl: null,
+      }));
+
+      return NextResponse.json({ videos: emptyVideos, warning: "UNKNOWN" });
+    } catch {
+      return NextResponse.json({ videos: [], warning: "UNKNOWN" });
+    }
   }
 }

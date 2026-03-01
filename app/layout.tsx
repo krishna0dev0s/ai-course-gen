@@ -1,5 +1,6 @@
 import type { Metadata } from "next";
 import { ClerkProvider } from "@clerk/nextjs";
+import { Analytics } from "@vercel/analytics/next";
 import "./globals.css";
 import Provider from "./provider";
 import { Toaster } from "sonner";
@@ -48,6 +49,7 @@ export default function RootLayout({
             />
           </div>
           <Provider>{children}<Toaster position="top-center" richColors={true} /></Provider>
+          <Analytics />
         </body>
       </html>
     </ClerkProvider>

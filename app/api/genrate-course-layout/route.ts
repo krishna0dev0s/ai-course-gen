@@ -1,5 +1,5 @@
 import { db } from "@/config/database";
-import { getGeminiClient, geminiModelName } from "@/config/gemini";
+import { generateOpenAIText } from "@/config/openai";
 import { coursesTable } from "@/config/schema";
 import { course_config_prompt } from "@/data/prompt";
 import { currentUser } from "@clerk/nextjs/server";
@@ -272,44 +272,33 @@ export async function POST(req: NextRequest) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
 
-    const dbReady = await canReachDatabase();
-    if (!dbReady) {
-      return NextResponse.json(
-        { error: "Course storage is temporarily unavailable. Please try again shortly." },
-        { status: 503 }
-      );
-    }
-
-    const client = getGeminiClient();
-    const model = client.getGenerativeModel({
-      model: geminiModelName,
-      generationConfig: { responseMimeType: "application/json" },
-    });
-
     const promptParts = [
       course_config_prompt,
       `Generate a course configuration for: ${userInput} with courseId: ${courseId ?? ""} and type: ${type}`,
       "Choose chapter count dynamically based on topic depth. Do not force 3 chapters.",
     ];
+    const prompt = promptParts.join("\n\n");
 
-    let response;
-    try {
-      response = await model.generateContent(promptParts);
-    } catch {
-      await sleep(1200);
-      response = await model.generateContent(promptParts);
-    }
+    let jsonResult: CourseLayoutPayload = normalizeCourseLayout(
+      buildFallbackCourseLayout(userInput, courseId)
+    );
 
-    const rawResult = response.response.text() || "";
-    let jsonResult: CourseLayoutPayload;
     try {
+      let rawResult = "";
+      try {
+        rawResult = await generateOpenAIText(prompt, { temperature: 0.3, maxTokens: 2200 });
+      } catch {
+        await sleep(1200);
+        rawResult = await generateOpenAIText(prompt, { temperature: 0.3, maxTokens: 2200 });
+      }
+
       const parsedResult = extractJson(rawResult) as CourseLayoutPayload | CourseLayoutPayload[];
       const rawLayout: CourseLayoutPayload = Array.isArray(parsedResult)
         ? parsedResult[0] ?? {}
         : parsedResult ?? {};
       jsonResult = normalizeCourseLayout(rawLayout);
-    } catch {
-      jsonResult = normalizeCourseLayout(buildFallbackCourseLayout(userInput, courseId));
+    } catch (aiError) {
+      console.warn("OpenAI unavailable, using fallback course layout", aiError);
     }
 
     const resolvedCourseId = String(courseId ?? jsonResult.courseId ?? "").trim();
@@ -334,14 +323,31 @@ export async function POST(req: NextRequest) {
       jsonResult = normalizeCourseLayout(buildFallbackCourseLayout(userInput, resolvedCourseId));
     }
 
-    const courseResult = await insertCourseWithConflictHandling({
-      courseId: resolvedCourseId,
-      courseName: resolvedCourseName,
-      userInput,
-      type: resolvedType,
-      courseLayout: jsonResult,
-      userId: userEmail,
-    });
+    let courseResult;
+    try {
+      courseResult = await insertCourseWithConflictHandling({
+        courseId: resolvedCourseId,
+        courseName: resolvedCourseName,
+        userInput,
+        type: resolvedType,
+        courseLayout: jsonResult,
+        userId: userEmail,
+      });
+    } catch (insertError) {
+      if (isInfraDbError(insertError)) {
+        await sleep(800);
+        courseResult = await insertCourseWithConflictHandling({
+          courseId: resolvedCourseId,
+          courseName: resolvedCourseName,
+          userInput,
+          type: resolvedType,
+          courseLayout: jsonResult,
+          userId: userEmail,
+        });
+      } else {
+        throw insertError;
+      }
+    }
 
     const createdCourse = courseResult?.[0];
     if (!createdCourse?.courseId) {
@@ -357,16 +363,23 @@ export async function POST(req: NextRequest) {
     const lowerMessage = message.toLowerCase();
     const dbCode = (error as { code?: string } | null)?.code;
 
-    if (message.includes("429") || lowerMessage.includes("resource exhausted")) {
+    if (message.includes("OPENAI_429") || message.includes("429") || lowerMessage.includes("rate limit")) {
       return Response.json(
-        { error: "Gemini quota exceeded. Try again later or switch to another Gemini model." },
+        { error: "OpenAI rate limit exceeded. Try again shortly." },
         { status: 429 }
       );
     }
 
-    if (lowerMessage.includes("fetch failed")) {
+    if (message.includes("Missing OPENAI_API_KEY")) {
       return Response.json(
-        { error: "Unable to reach Gemini API from this network. Check firewall/proxy/VPN and try again." },
+        { error: "OPENAI_API_KEY is missing in environment variables." },
+        { status: 500 }
+      );
+    }
+
+    if (lowerMessage.includes("fetch failed") || message.includes("OPENAI_5")) {
+      return Response.json(
+        { error: "Unable to reach OpenAI right now. Please retry in a moment." },
         { status: 503 }
       );
     }

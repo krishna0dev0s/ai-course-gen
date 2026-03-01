@@ -1,13 +1,15 @@
 "use client";
 import React, { useEffect, useState } from "react";
-import axios from "axios";
 import { UserDetailContext } from "@/context/UserDetailContext";
 import { useUser } from "@clerk/nextjs";
 import { usePathname } from "next/navigation";
+import dynamic from "next/dynamic";
 import Header from "./_components/Header";
 import Footer from "./_components/Footer";
-import DarkVeil from "@/components/DarkVeil";
-import ClickSpark from "@/components/ClickSpark";
+
+const DarkVeil = dynamic(() => import("@/components/DarkVeil"), { ssr: false });
+const ClickSpark = dynamic(() => import("@/components/ClickSpark"), { ssr: false });
+
 function Provider({ children }: { children: React.ReactNode }) {
   const { isLoaded, isSignedIn } = useUser();
   const pathname = usePathname();
@@ -38,42 +40,49 @@ function Provider({ children }: { children: React.ReactNode }) {
     if (!isLoaded || !isSignedIn) return;
     CreateNewUser();
   }, [isLoaded, isSignedIn]);
+
   const CreateNewUser = async () => {
     try {
-      const result = await axios.post("/api/user", {}, {
-        validateStatus: (status) => status >= 200 && status < 500,
+      const result = await fetch("/api/user", {
+        method: "POST",
+        credentials: "same-origin",
+        cache: "no-store",
       });
 
-      if (result.status >= 200 && result.status < 300) {
-        setUserDetails(result?.data);
+      if (result.ok) {
+        const data = await result.json();
+        setUserDetails(data);
         return;
       }
 
       setUserDetails(null);
-    } catch (error) {
+    } catch {
       setUserDetails(null);
     }
   };
+
+  const content = (
+    <div className="relative z-10">
+      {showHomeBg && (
+        <div className="pointer-events-none fixed inset-0 -z-10">
+          <DarkVeil
+            hueShift={0}
+            noiseIntensity={0}
+            scanlineIntensity={0}
+            speed={0.5}
+            scanlineFrequency={0}
+            warpAmount={0}
+          />
+        </div>
+      )}
+      <UserDetailContext.Provider value={{ userDetails, setUserDetails }}>
+        <div><Header />{children}<Footer /></div>
+      </UserDetailContext.Provider>
+    </div>
+  );
+
   return (
-    <ClickSpark>
-      <div className="relative z-10">
-        {showHomeBg && (
-          <div className="pointer-events-none fixed inset-0 -z-10">
-            <DarkVeil
-              hueShift={0}
-              noiseIntensity={0}
-              scanlineIntensity={0}
-              speed={0.5}
-              scanlineFrequency={0}
-              warpAmount={0}
-            />
-          </div>
-        )}
-        <UserDetailContext.Provider value={{ userDetails, setUserDetails }}>
-          <div><Header/>{children}<Footer /></div>
-        </UserDetailContext.Provider>
-      </div>
-    </ClickSpark>
+    showHomeBg ? <ClickSpark>{content}</ClickSpark> : content
   );
 }
 

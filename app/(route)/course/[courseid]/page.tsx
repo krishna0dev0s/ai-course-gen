@@ -7,6 +7,9 @@ import CourseInfoCard from "./_components/CourseInfoCard";
 import { chapter, Course } from "@/Type/courseType";
 import CourseChapters, { ChapterYoutubeVideoMap } from "./_components/CourseChapters";
 import { toast } from "sonner";
+import Link from "next/link";
+import { Button } from "@/components/ui/button";
+import { CheckCircle2 } from "lucide-react";
 
 export default function CoursePreview() {
   const { courseid } = useParams();
@@ -17,6 +20,7 @@ export default function CoursePreview() {
   const [isLoadingVideos, setIsLoadingVideos] = useState(false);
   const [refreshingChapterId, setRefreshingChapterId] = useState<string | null>(null);
   const [generatingNotesChapterId, setGeneratingNotesChapterId] = useState<string | null>(null);
+  const [completedChapterMap, setCompletedChapterMap] = useState<Record<string, boolean>>({});
   const [hasError, setHasError] = useState(false);
 
   const showYouTubeWarning = (warning?: string | null) => {
@@ -27,6 +31,9 @@ export default function CoursePreview() {
         break;
       case "INVALID_KEY":
         toast.error("YouTube API key is invalid or missing. Please check your YOUTUBE_API_KEY in .env.", { duration: 8000 });
+        break;
+      case "MISSING_KEY":
+        toast.error("YouTube API key is missing. Add YOUTUBE_API_KEY in .env to enable chapter videos.", { duration: 8000 });
         break;
       case "API_NOT_ENABLED":
         toast.error("YouTube Data API v3 is not enabled for this API key. Enable it in the Google Cloud Console.", { duration: 8000 });
@@ -63,6 +70,7 @@ export default function CoursePreview() {
       }
 
       setCourseInfo(result.data);
+      hydrateChapterProgress(result.data);
       fetchChapterVideos(result.data);
 
       toast.success("Course details loaded", { id: loadingToast });
@@ -91,7 +99,7 @@ export default function CoursePreview() {
           chapters,
         },
         {
-          validateStatus: (status) => status >= 200 && status < 500,
+          validateStatus: (status) => status >= 200 && status < 600,
         }
       );
 
@@ -119,6 +127,43 @@ export default function CoursePreview() {
     }
   };
 
+  const hydrateChapterProgress = (course: Course) => {
+    const key = `course-progress:${course.courseId}`;
+    try {
+      const saved = localStorage.getItem(key);
+      if (!saved) {
+        setCompletedChapterMap({});
+        return;
+      }
+
+      const parsed = JSON.parse(saved) as Record<string, boolean>;
+      setCompletedChapterMap(parsed);
+    } catch {
+      setCompletedChapterMap({});
+    }
+  };
+
+  const toggleChapterCompletion = (selectedChapter: chapter) => {
+    if (!courseDetails) return;
+
+    const chapterId = selectedChapter.chapterId;
+    const key = `course-progress:${courseDetails.courseId}`;
+
+    setCompletedChapterMap((prev) => {
+      const next = {
+        ...prev,
+        [chapterId]: !prev[chapterId],
+      };
+
+      if (!next[chapterId]) {
+        delete next[chapterId];
+      }
+
+      localStorage.setItem(key, JSON.stringify(next));
+      return next;
+    });
+  };
+
   const refreshChapterVideo = async (selectedChapter: chapter) => {
     if (!courseDetails) return;
 
@@ -134,7 +179,7 @@ export default function CoursePreview() {
           forceRefresh: true,
         },
         {
-          validateStatus: (status) => status >= 200 && status < 500,
+          validateStatus: (status) => status >= 200 && status < 600,
         }
       );
 
@@ -180,7 +225,7 @@ export default function CoursePreview() {
           forceRefresh: true,
         },
         {
-          validateStatus: (status) => status >= 200 && status < 500,
+          validateStatus: (status) => status >= 200 && status < 600,
         }
       );
 
@@ -216,11 +261,23 @@ export default function CoursePreview() {
 
     try {
       const selectedVideo = chapterVideos[chapterId];
-      const result = await axios.post("/api/generate-chapter-notes", {
-        courseName: courseDetails?.courseLayout?.courseName,
-        chapter: selectedChapter,
-        video: selectedVideo,
-      });
+      const result = await axios.post(
+        "/api/generate-chapter-notes",
+        {
+          courseName: courseDetails?.courseLayout?.courseName,
+          chapter: selectedChapter,
+          video: selectedVideo,
+        },
+        {
+          validateStatus: (status) => status >= 200 && status < 600,
+        }
+      );
+
+      if (result.status >= 400) {
+        const message = (result.data as { error?: string } | undefined)?.error;
+        toast.error(message || "Could not generate notes for this chapter");
+        return;
+      }
 
       const notes = (result?.data?.notes as string | undefined)?.trim();
       if (!notes) {
@@ -261,31 +318,35 @@ export default function CoursePreview() {
     URL.revokeObjectURL(url);
   };
 
+  const totalChapters = courseDetails?.courseLayout?.chapters?.length ?? 0;
+  const completedChapters = Object.values(completedChapterMap).filter(Boolean).length;
+  const isCourseCompleted = totalChapters > 0 && completedChapters >= totalChapters;
+
   return (
     <div className="relative min-h-screen">
       {/* Top gradient accent */}
-      <div className="pointer-events-none absolute top-0 left-0 right-0 h-80 bg-gradient-to-b from-white/[0.03] via-transparent to-transparent" />
+      <div className="pointer-events-none absolute top-0 left-0 right-0 h-80 bg-linear-to-b from-white/3 via-transparent to-transparent" />
 
       <div className="relative z-10 mx-auto max-w-6xl px-4 py-8 md:px-6 md:py-10 space-y-8">
         {/* Loading state */}
         {isLoading && (
           <div className="space-y-6 animate-pulse">
-            <div className="rounded-2xl border border-white/10 bg-white/[0.03] p-10 backdrop-blur-md">
+            <div className="rounded-2xl border border-white/10 bg-white/3 p-10 backdrop-blur-md">
               <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
                 <div className="space-y-4">
                   <div className="h-6 w-32 rounded-md bg-white/10" />
                   <div className="h-10 w-3/4 rounded-md bg-white/10" />
-                  <div className="h-20 w-full rounded-md bg-white/[0.06]" />
+                  <div className="h-20 w-full rounded-md bg-white/6" />
                   <div className="flex gap-2">
                     <div className="h-6 w-20 rounded-full bg-white/10" />
                     <div className="h-6 w-24 rounded-full bg-white/10" />
                   </div>
                 </div>
-                <div className="rounded-2xl bg-white/[0.03] h-48" />
+                <div className="rounded-2xl bg-white/3 h-48" />
               </div>
             </div>
             {[1, 2, 3].map((i) => (
-              <div key={i} className="rounded-xl border border-white/10 bg-white/[0.03] p-6 backdrop-blur-md">
+              <div key={i} className="rounded-xl border border-white/10 bg-white/3 p-6 backdrop-blur-md">
                 <div className="flex items-center gap-3">
                   <div className="h-9 w-9 rounded-full bg-white/10" />
                   <div className="h-5 w-48 rounded bg-white/10" />
@@ -297,7 +358,7 @@ export default function CoursePreview() {
 
         {/* Error state */}
         {hasError && (
-          <div className="flex flex-col items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/[0.05] px-8 py-16 text-center backdrop-blur-md">
+          <div className="flex flex-col items-center justify-center rounded-2xl border border-red-500/20 bg-red-500/5 px-8 py-16 text-center backdrop-blur-md">
             <div className="mb-4 flex h-14 w-14 items-center justify-center rounded-full bg-red-500/10">
               <span className="text-2xl">!</span>
             </div>
@@ -309,6 +370,30 @@ export default function CoursePreview() {
         {courseDetails && (
           <>
             <CourseInfoCard Course={courseDetails} />
+            <div className="rounded-xl border border-white/10 bg-white/3 p-4 md:p-5 backdrop-blur-sm">
+              <div className="flex flex-wrap items-center justify-between gap-3">
+                <div>
+                  <p className="text-sm text-white/70">
+                    Completion Progress: <span className="font-semibold text-white">{completedChapters}/{totalChapters}</span>
+                  </p>
+                  <p className="text-xs text-white/50 mt-1">
+                    Mark each chapter complete to unlock AI-generated mock test.
+                  </p>
+                </div>
+
+                {isCourseCompleted ? (
+                  <Button asChild className="bg-white text-black hover:bg-white/90">
+                    <Link href={`/mock-test/${courseDetails.courseId}`}>
+                      <CheckCircle2 className="mr-2 h-4 w-4" /> Start AI Mock Test
+                    </Link>
+                  </Button>
+                ) : (
+                  <Button disabled variant="outline" className="border-white/20 bg-transparent text-white/60">
+                    Complete all chapters to unlock test
+                  </Button>
+                )}
+              </div>
+            </div>
             <CourseChapters
               course={courseDetails}
               chapterVideos={chapterVideos}
@@ -316,10 +401,12 @@ export default function CoursePreview() {
               isLoadingVideos={isLoadingVideos}
               refreshingChapterId={refreshingChapterId}
               generatingNotesChapterId={generatingNotesChapterId}
+              completedChapterMap={completedChapterMap}
               onRefreshChapter={refreshChapterVideo}
               onRefreshAllChapters={refreshAllChapterVideos}
               onGenerateNotes={generateChapterNotes}
               onDownloadNotes={downloadChapterNotes}
+              onToggleChapterCompletion={toggleChapterCompletion}
             />
           </>
         )}
