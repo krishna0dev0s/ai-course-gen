@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from "next/server";
-import { getGeminiClient, geminiModelName } from "@/config/gemini";
+import { generateOpenAIText } from "@/config/openai";
 
 type ChapterInput = {
   chapterId?: string;
@@ -67,10 +67,7 @@ Requirements:
 6) Do not include HTML or code fences unless absolutely needed.
 `;
 
-    const client = getGeminiClient();
-    const model = client.getGenerativeModel({ model: geminiModelName });
-    const result = await model.generateContent(prompt);
-    const notes = (result.response.text() ?? "").trim();
+    const notes = await generateOpenAIText(prompt, { temperature: 0.4, maxTokens: 2200 });
 
     if (!notes) {
       return NextResponse.json({ error: "Could not generate notes" }, { status: 500 });

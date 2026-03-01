@@ -97,11 +97,17 @@ export default function DarkVeil({
 }: Props) {
   const ref = useRef<HTMLCanvasElement>(null);
   useEffect(() => {
+    if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+      return;
+    }
+
     const canvas = ref.current as HTMLCanvasElement;
+    if (!canvas) return;
     const parent = canvas.parentElement as HTMLElement;
+    if (!parent) return;
 
     const renderer = new Renderer({
-      dpr: Math.min(window.devicePixelRatio, 2),
+      dpr: Math.min(window.devicePixelRatio, 1.5),
       canvas
     });
 
@@ -136,8 +142,10 @@ export default function DarkVeil({
 
     const start = performance.now();
     let frame = 0;
+    let isRunning = true;
 
     const loop = () => {
+      if (!isRunning) return;
       program.uniforms.uTime.value = ((performance.now() - start) / 1000) * speed;
       program.uniforms.uHueShift.value = hueShift;
       program.uniforms.uNoise.value = noiseIntensity;
@@ -148,11 +156,28 @@ export default function DarkVeil({
       frame = requestAnimationFrame(loop);
     };
 
+    const handleVisibilityChange = () => {
+      if (document.hidden) {
+        isRunning = false;
+        cancelAnimationFrame(frame);
+        return;
+      }
+
+      if (!isRunning) {
+        isRunning = true;
+        frame = requestAnimationFrame(loop);
+      }
+    };
+
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+
     loop();
 
     return () => {
+      isRunning = false;
       cancelAnimationFrame(frame);
       window.removeEventListener('resize', resize);
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
     };
   }, [hueShift, noiseIntensity, scanlineIntensity, speed, scanlineFrequency, warpAmount, resolutionScale]);
   return <canvas ref={ref} className={styles.canvas} />;

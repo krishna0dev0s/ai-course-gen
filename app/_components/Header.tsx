@@ -208,13 +208,13 @@ const Header = () => {
                         <DropdownItem
                           icon={<User className="h-4 w-4" />}
                           label="Profile"
-                          href="/user-profile"
+                          href="/profile"
                           onClick={() => setAccountOpen(false)}
                         />
                         <DropdownItem
                           icon={<Settings className="h-4 w-4" />}
                           label="Settings"
-                          href="/user-profile"
+                          href="/profile"
                           onClick={() => setAccountOpen(false)}
                         />
 

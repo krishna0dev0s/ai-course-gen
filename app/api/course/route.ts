@@ -5,6 +5,10 @@ import { and, desc, eq } from "drizzle-orm";
 import { currentUser } from "@clerk/nextjs/server";
 import { z } from "zod";
 
+const PRIVATE_CACHE_HEADERS = {
+    "Cache-Control": "private, max-age=15, stale-while-revalidate=60",
+};
+
 function isRecoverableDbReadError(error: unknown) {
     const message = error instanceof Error ? error.message.toLowerCase() : "";
     const code = (error as { code?: string } | null)?.code;
@@ -91,16 +95,22 @@ export async function GET(req: NextRequest) {
             return NextResponse.json({
                 ...course[0],
                 chapterContentSlides: chapterContentSlidesRows,
-            });
+            }, { headers: PRIVATE_CACHE_HEADERS });
         }
 
         const courses = await db
-            .select()
+            .select({
+                id: coursesTable.id,
+                courseId: coursesTable.courseId,
+                courseName: coursesTable.courseName,
+                type: coursesTable.type,
+                createdAT: coursesTable.createdAT,
+            })
             .from(coursesTable)
             .where(eq(coursesTable.userId, userEmail))
             .orderBy(desc(coursesTable.createdAT));
 
-        return NextResponse.json({ courses });
+        return NextResponse.json({ courses }, { headers: PRIVATE_CACHE_HEADERS });
     } catch (error) {
         console.error("Error fetching course(s)");
 

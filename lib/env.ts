@@ -8,11 +8,11 @@ const requiredVars = [
   "DATABASE_URL",
   "NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY",
   "CLERK_SECRET_KEY",
-  "GEMINI_API_KEY",
+  "OPENAI_API_KEY",
   "YOUTUBE_API_KEY",
 ];
 
-const optionalVars = ["GEMINI_MODEL"];
+const optionalVars = ["OPENAI_MODEL"];
 
 function isMissing(value: string | undefined) {
   return !value || value.trim().length === 0;

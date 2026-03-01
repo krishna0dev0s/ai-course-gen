@@ -1,7 +1,7 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { chapter, Course } from '@/Type/courseType';
 import { Button } from '@/components/ui/button';
-import { Dot, RefreshCw, FileText, Download, Play, RotateCw } from 'lucide-react';
+import { RefreshCw, FileText, Download, Play, RotateCw, CheckCircle2, Circle } from 'lucide-react';
 import React, { useState } from 'react';
 
 export type ChapterYoutubeVideo = {
@@ -26,10 +26,12 @@ type Props = {
   isLoadingVideos: boolean;
   refreshingChapterId: string | null;
   generatingNotesChapterId: string | null;
+  completedChapterMap: Record<string, boolean>;
   onRefreshChapter: (selectedChapter: chapter) => void;
   onRefreshAllChapters: () => void;
   onGenerateNotes: (selectedChapter: chapter) => void;
   onDownloadNotes: (selectedChapter: chapter) => void;
+  onToggleChapterCompletion: (selectedChapter: chapter) => void;
 };
 
 function getYouTubeEmbedUrl(chapterTitle: string, courseName?: string) {
@@ -44,10 +46,12 @@ function CourseChapters({
   isLoadingVideos,
   refreshingChapterId,
   generatingNotesChapterId,
+  completedChapterMap,
   onRefreshChapter,
   onRefreshAllChapters,
   onGenerateNotes,
   onDownloadNotes,
+  onToggleChapterCompletion,
 }: Props) {
   const [expandedChapter, setExpandedChapter] = useState<number | null>(null);
   const chapters = course?.courseLayout?.chapters ?? [];
@@ -85,6 +89,7 @@ function CourseChapters({
           const chapterNote = chapterNotes[chapterKey];
           const videoUrl = fetchedVideo?.embedUrl || null;
           const isExpanded = expandedChapter === index;
+          const isCompleted = Boolean(completedChapterMap[chapterKey]);
 
           return (
             <div
@@ -123,6 +128,11 @@ function CourseChapters({
 
                 {/* Status badges */}
                 <div className="hidden sm:flex items-center gap-2">
+                  {isCompleted && (
+                    <span className="flex items-center gap-1 rounded-full bg-emerald-500/20 px-2 py-0.5 text-[10px] font-medium text-emerald-200 ring-1 ring-emerald-400/30">
+                      <CheckCircle2 className="h-3 w-3" /> Completed
+                    </span>
+                  )}
                   {chapterNote && (
                     <span className="flex items-center gap-1 rounded-full bg-white/8 px-2 py-0.5 text-[10px] font-medium text-white/60 ring-1 ring-white/10">
                       <FileText className="h-3 w-3" /> Notes
@@ -152,6 +162,22 @@ function CourseChapters({
                 <div className="animate-[fadeIn_0.25s_ease-out] border-t border-white/6 px-5 py-5">
                   {/* Action buttons */}
                   <div className="mb-5 flex flex-wrap gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      className="h-8 border-white/10 bg-white/4 text-xs text-white/70 hover:border-white/20 hover:bg-white/8 hover:text-white"
+                      onClick={(e) => { e.stopPropagation(); onToggleChapterCompletion(chapter); }}
+                    >
+                      {isCompleted ? (
+                        <>
+                          <CheckCircle2 className="mr-1.5 h-3 w-3 text-emerald-300" /> Mark Incomplete
+                        </>
+                      ) : (
+                        <>
+                          <Circle className="mr-1.5 h-3 w-3" /> Mark Complete
+                        </>
+                      )}
+                    </Button>
                     <Button
                       variant="outline"
                       size="sm"

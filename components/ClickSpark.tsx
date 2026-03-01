@@ -32,7 +32,7 @@ const ClickSpark: React.FC<ClickSparkProps> = ({
 }) => {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const sparksRef = useRef<Spark[]>([]);
-  const startTimeRef = useRef<number | null>(null);
+  const startAnimationRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -89,13 +89,15 @@ const ClickSpark: React.FC<ClickSparkProps> = ({
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
-    let animationId: number;
+    let animationId: number | null = null;
 
     const draw = (timestamp: number) => {
-      if (!startTimeRef.current) {
-        startTimeRef.current = timestamp;
-      }
       ctx?.clearRect(0, 0, canvas.width, canvas.height);
+
+      if (sparksRef.current.length === 0) {
+        animationId = null;
+        return;
+      }
 
       sparksRef.current = sparksRef.current.filter((spark: Spark) => {
         const elapsed = timestamp - spark.startTime;
@@ -124,13 +126,23 @@ const ClickSpark: React.FC<ClickSparkProps> = ({
         return true;
       });
 
+      if (sparksRef.current.length > 0) {
+        animationId = requestAnimationFrame(draw);
+      } else {
+        animationId = null;
+      }
+    };
+
+    startAnimationRef.current = () => {
+      if (animationId !== null) return;
       animationId = requestAnimationFrame(draw);
     };
 
-    animationId = requestAnimationFrame(draw);
-
     return () => {
-      cancelAnimationFrame(animationId);
+      if (animationId !== null) {
+        cancelAnimationFrame(animationId);
+      }
+      startAnimationRef.current = null;
     };
   }, [sparkColor, sparkSize, sparkRadius, sparkCount, duration, easeFunc, extraScale]);
 
@@ -150,6 +162,7 @@ const ClickSpark: React.FC<ClickSparkProps> = ({
     }));
 
     sparksRef.current.push(...newSparks);
+    startAnimationRef.current?.();
   };
 
   return (
